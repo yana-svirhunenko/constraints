@@ -4,6 +4,7 @@ from collections import defaultdict
 from constants import *
 from data_structures import *
 
+
 def get_random_subject(simultaneous_lessons, group):
 
     subjects_with_hours = []
@@ -29,15 +30,15 @@ def get_lecturer_and_auditorium(simultaneous_lessons, subject, lecturers, audito
 
     if subject[1] == 'lectures':
         for l in simultaneous_lessons:
-          if l.subject_name == subject[0] and l.subject_type == 'lectures':
-            return l.lecturer, l.auditorium
+            if l.subject_name == subject[0] and l.subject_type == 'lectures':
+                return l.lecturer, l.auditorium
 
     try:
-      available_lecturers = [l for l in lecturers if subject[0] in l.subjects and subject[1] in l.can_teach]
-      lecturer = random.choice(available_lecturers)
-      auditorium = random.choice(auditoriums)
+        available_lecturers = [l for l in lecturers if subject[0] in l.subjects and subject[1] in l.can_teach]
+        lecturer = random.choice(available_lecturers)
+        auditorium = random.choice(auditoriums)
     except:
-      return None, None
+        return None, None
 
     return lecturer, auditorium
 

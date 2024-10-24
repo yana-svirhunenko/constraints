@@ -24,8 +24,8 @@ def genetic_algorithm(groups, lecturers, auditoriums):
         best_fitness = max(fitness_scores)
         print(f"Generation {generation}, Best Fitness: {best_fitness}")
         if best_fitness >= 0:
-          print()
-          break
+            print()
+            break
 
     final_fitness_scores = [fitness(individual, groups, lecturers) for individual in population]
     best_individual_idx = final_fitness_scores.index(max(final_fitness_scores))
