@@ -5,6 +5,65 @@ from constants import *
 from data_structures import *
 
 
+class Constraint:
+
+    def __init__(self, group=None, und_group=None, subject_name=None, subject_type=None,
+                 lecturer=None, auditorium=None, day=None, lesson_period=None):
+
+        self.group = group if isinstance(group, list) else [group] if group else None
+        self.und_group = und_group if isinstance(und_group, list) else [und_group] if und_group else None
+        self.subject_name = subject_name if isinstance(subject_name, list) else [subject_name] if subject_name else None
+        self.subject_type = subject_type if isinstance(subject_type, list) else [subject_type] if subject_type else None
+        self.lecturer = lecturer if isinstance(lecturer, list) else [lecturer] if lecturer else None
+        self.auditorium = auditorium if isinstance(auditorium, list) else [auditorium] if auditorium else None
+        self.day = day if isinstance(day, list) else [day] if day else None
+        self.lesson_period = lesson_period if isinstance(lesson_period, list) else [lesson_period] if lesson_period else None
+
+    def check_constraint(self, schedule, i, j):
+
+        if self.day is not None:
+            if any(self.day) < i:
+                return True
+
+        if self.day is not None and self.lesson_period is not None:
+            if any(self.day) < i or (any(self.day) == i and any(self.lesson_period) < j):
+                return True
+
+        for day, lessons in schedule.items():
+            for sim_lessons in lessons:
+                for lesson in sim_lessons:
+
+                    if self.group and lesson.group.name not in self.group:
+                        continue
+                    if self.und_group and lesson.und_group not in self.und_group:
+                        continue
+                    if self.subject_name and lesson.subject_name not in self.subject_name:
+                        continue
+                    if self.subject_type and lesson.subject_type not in self.subject_type:
+                        continue
+                    if self.lecturer and lesson.lecturer.name not in self.lecturer:
+                        continue
+                    if self.auditorium and lesson.auditorium.name not in self.auditorium:
+                        continue
+                    if self.day and lesson.day not in self.day:
+                        continue
+                    if self.lesson_period and lesson.lesson_period not in self.lesson_period:
+                        continue
+                    return True
+        return False
+
+
+class LambdaConstraint:
+
+    def __init__(self, predicate):
+        if not callable(predicate):
+            raise ValueError("Predicate must be callable.")
+        self.predicate = predicate
+
+    def check_constraint(self, schedule):
+        return self.predicate(schedule)
+
+
 def get_random_subject(simultaneous_lessons, group):
 
     subjects_with_hours = []
@@ -70,11 +129,24 @@ def generate_simultaneous_lessons(g, l, a, i, j):
     return simultaneous_lessons
 
 
-def initialize_population(groups, lecturers, auditoriums):
+def check(sc, constr, i, j):
+    for c in constr:
+        if not c.check_constraint(sc, i, j):
+            return False
+    return True
 
-    population = []
-    for _ in range(POPULATION_SIZE):
 
+def check_lambda(sc, constr):
+    for c in constr:
+        if not c.check_constraint(sc):
+            return False
+    return True
+
+
+def get_schedule(groups, lecturers, auditoriums, constraints=None, lambda_constraints=None):
+
+    attempts = 1
+    while True:
         individual = {
             'day_1': [],
             'day_2': [],
@@ -84,130 +156,19 @@ def initialize_population(groups, lecturers, auditoriums):
         }
 
         for i in range(1, DAYS + 1):
-          for j in range(1, MAXIMUM_LESSONS_PER_DAY + 1):
-            g = copy.deepcopy(groups)
-            l = copy.deepcopy(lecturers)
-            a = copy.deepcopy(auditoriums)
-            simultaneous_lessons = generate_simultaneous_lessons(g, l, a, i, j)
-            individual[f'day_{i}'].append(simultaneous_lessons)
-        population.append(individual)
+            j = 1
+            while j <= MAXIMUM_LESSONS_PER_DAY:
+                g = copy.deepcopy(groups)
+                l = copy.deepcopy(lecturers)
+                a = copy.deepcopy(auditoriums)
+                simultaneous_lessons = generate_simultaneous_lessons(g, l, a, i, j)
+                new_individual = copy.deepcopy(individual)
+                new_individual[f'day_{i}'].append(simultaneous_lessons)
 
-    return population
+                if check(new_individual, constraints, i, j):
+                    individual = new_individual
+                    j += 1
+                attempts += 1
 
-
-def find_windows(schedule):
-
-    windows_number = 0
-    for i in range(MAXIMUM_LESSONS_PER_DAY):
-      for j in range(GROUPS_NUM):
-        if j == 1:
-          k = i
-          window = False
-          while k < MAXIMUM_LESSONS_PER_DAY:
-            if schedule[k][j] == 0:
-              window = True
-            if schedule[k][j] == 1 and window:
-              windows_number += 1
-            k += 1
-
-    return windows_number
-
-
-def count_lesson_hours(individual):
-
-    lesson_hours = defaultdict(int)
-    for day, lessons in individual.items():
-        for sim_lessons in lessons:
-            for l in sim_lessons:
-                lesson_key = (l.group.name, l.und_group, l.subject_name, l.subject_type, l.total_hours)
-                lesson_hours[lesson_key] += LESSON_LENGTH * WEEKS
-
-    return dict(lesson_hours)
-
-
-def fitness(individual, groups, lecturers):
-
-    score = 0
-    for day, lessons in individual.items():
-      windows_number = 0
-      prev_lesson_groups = [[0 for _ in range(len(groups))] for _ in range(MAXIMUM_LESSONS_PER_DAY)]
-      prev_lesson_lecturers = [[0 for _ in range(len(lecturers))] for _ in range(MAXIMUM_LESSONS_PER_DAY)]
-      for i, sim_lessons in enumerate(lessons):
-        for l in sim_lessons:
-
-          current_students = (
-          l.group.student_number
-          if l.und_group is None
-          else l.group.group_1
-          if l.und_group == 1
-          else l.group.group_2
-          )
-          if current_students > l.auditorium.seats:
-            score -= 1000
-
-          index_1 = next((i for i, group in enumerate(groups) if l.group.name == group.name), None)
-          index_2 = next((i for i, lecturer in enumerate(lecturers) if l.lecturer.name == lecturer.name), None)
-
-          if index_1 is not None and index_2 is not None:
-              prev_lesson_groups[i][index_1] = 1
-              prev_lesson_lecturers[i][index_2] = 1
-          else:
-              print(f"Warning: Lecturer or Group not found for lesson {l}.")
-
-      windows_number += find_windows(prev_lesson_groups)
-      windows_number += find_windows(prev_lesson_lecturers)
-      score -= windows_number * 500
-
-    hours_offset = 0
-    lesson_hours = count_lesson_hours(individual)
-
-    for lesson, total_hours in lesson_hours.items():
-        required_hours = lesson[-1]
-        hours_offset += abs(required_hours - total_hours)
-
-    score -= 100 * hours_offset
-
-    return score
-
-
-def selection(population, fitness_scores):
-
-    selected = random.sample(list(enumerate(fitness_scores)), TOURNAMENT_SIZE)
-    selected = sorted(selected, key=lambda x: x[1], reverse=True)
-    best_idx = selected[0][0]
-    return population[best_idx]
-
-
-def crossover(parent1, parent2):
-
-    if not isinstance(parent1, dict) or not isinstance(parent2, dict):
-        raise TypeError("Both parents must be dictionaries.")
-    days = list(parent1.keys())
-    child1 = {}
-    child2 = {}
-    for i, day in enumerate(days):
-      if random.choice([True, False]):
-        child1[day] = parent1[day]
-        child2[day] = parent2[day]
-      else:
-        child1[day] = parent2[day]
-        child2[day] = parent1[day]
-
-    return child1, child2
-
-
-def mutate(individual, groups, lecturers, auditoriums):
-
-    if random.random() < MUTATION_RATE:
-
-        days = list(individual.keys())
-        idx_1 = random.randint(0, DAYS - 1)
-        day_key = days[idx_1]
-        idx_2 = random.randint(0, MAXIMUM_LESSONS_PER_DAY - 1)
-        g = copy.deepcopy(groups)
-        l = copy.deepcopy(lecturers)
-        a = copy.deepcopy(auditoriums)
-        simultaneous_lessons = generate_simultaneous_lessons(g, l, a, idx_1 + 1, idx_2 + 1)
-        individual[day_key][idx_2] = simultaneous_lessons
-
-    return individual
+        if check_lambda(individual, lambda_constraints):
+            return individual, attempts
